@@ -86,7 +86,11 @@ function makeschedule(nuwd::NestedUWD{<:Union{
         parentindex(nuwd.jtree, i)
     end
 
-    schedule = WiringDiagramACSet{T, Nothing, Union{Nothing, AbstractBox}, DataType}()
+    values = map(1:n) do i
+        length(getresidual(nuwd.jtree, i)) + length(getseperator(nuwd.jtree, i))
+    end
+
+    schedule = WiringDiagramACSet{T, Nothing, Union{Int, AbstractBox}, DataType}()
 
     add_parts!(schedule, :Box, n)
     add_parts!(schedule, :Wire, n - 1)
@@ -105,10 +109,11 @@ function makeschedule(nuwd::NestedUWD{<:Union{
     schedule[:, :out_tgt] = 1:1
     schedule[:, :in_port_box] = [nuwd.assignments; parents]
     schedule[:, :out_port_box] = 1:n
-
-    schedule[:, :box_type] = Box{Nothing}
+    
+    schedule[:, :value] = values
+    schedule[:, :box_type] = Box{Int}
     schedule[:, :outer_in_port_type] = nuwd.diagram[:, :name]
 
     Theory = ThSymmetricMonoidalCategory.Meta.T
-    WiringDiagram{Theory, T, Nothing, Nothing}(schedule, nothing)
+    WiringDiagram{Theory, T, Nothing, Int}(schedule, nothing)
 end
