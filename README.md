@@ -20,7 +20,7 @@ nuwd = NestedUWD(diagram)
 to_graphviz(diagram; box_labels=:name, junction_labels=:variable)
 ```
 
-<img src="./uwd.svg" width="400"/>
+<img src="./uwd.svg" width="500"/>
 
 
 ```julia
