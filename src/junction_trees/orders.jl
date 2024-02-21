@@ -31,34 +31,35 @@ end
 
 # Construct an elimination order using the reverse Cuthill-McKee algorithm. Uses
 # CuthillMcKee.jl.
-function Order(graph::AbstractGraph, ::CuthillMcKeeJL_RCM)
-    order = CuthillMcKee.symrcm(adjacency_matrix(graph))
+function Order(graph::AbstractSymmetricGraph, ::CuthillMcKeeJL_RCM)
+    order = CuthillMcKee.symrcm(adjacencymatrix(graph))
     Order(order)
 end
 
 
 # Construct an elimination order using the approximate minimum degree algorithm. Uses
 # AMD.jl.
-function Order(graph::AbstractGraph, ::AMDJL_AMD)
-    order = AMD.symamd(adjacency_matrix(graph))
+function Order(graph::AbstractSymmetricGraph, ::AMDJL_AMD)
+    order = AMD.symamd(adjacencymatrix(graph))
     Order(order)
 end
 
 
 # Construct an elimination order using the nested dissection heuristic. Uses Metis.jl.
-function Order(graph::AbstractGraph, ::MetisJL_ND)
-    order, index = Metis.permutation(graph)
+function Order(graph::AbstractSymmetricGraph, ::MetisJL_ND)
+    order, index = Metis.permutation(adjacencymatrix(graph))
     Order(order, index)
 end
 
 
 # Construct an elimination order using the maximum cardinality search algorithm.
-function Order(graph::AbstractGraph, ::MCS)
+function Order(graph::AbstractSymmetricGraph, ::MCS)
     order, index = mcs(graph)
     Order(order, index)
 end
 
 
+# Compose as permutations.
 function compose(order₁::Order, order₂::Order)
     order = order₂.order[order₁.order]
     index = order₁.index[order₂.index]
@@ -82,7 +83,7 @@ end
 #
 # https://doi.org/10.1137/0213035
 # Maximum cardinality search
-function mcs(graph::AbstractGraph)
+function mcs(graph::AbstractSymmetricGraph)
     n = nv(graph)
     α = Vector{Int}(undef, n)
     α⁻¹ = Vector{Int}(undef, n)
@@ -119,6 +120,26 @@ function mcs(graph::AbstractGraph)
     end
 
     α⁻¹, α
+end
+
+
+# Construct the adjacency matrix of a graph.
+function adjacencymatrix(graph::AbstractSymmetricGraph)
+    m = ne(graph)
+    n = nv(graph)
+
+    colptr = ones(Int, n + 1)
+    rowval = sizehint!(Vector{Int}(), 2m)
+
+    for j in 1:n
+        ns = collect(neighbors(graph, j))
+        sort!(ns)
+        colptr[j + 1] = colptr[j] + length(ns)
+        append!(rowval, ns)
+    end
+
+    nzval = ones(Int, length(rowval))
+    SparseMatrixCSC(n, n, colptr, rowval, nzval)
 end
 
 

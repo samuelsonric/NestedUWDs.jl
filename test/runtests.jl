@@ -1,21 +1,21 @@
 using AbstractTrees
+using Catlab.BasicGraphs
+using Catlab.RelationalPrograms
+using Catlab.UndirectedWiringDiagrams
+using LinearAlgebra
+using NestedUWDs
 using NestedUWDs.JunctionTrees
-using Graphs
 using Test
 
 
 # Vandenberghe and Andersen
 # Chordal Graphs and Semidefinite Optimization
 @testset "JunctionTrees" begin
-    graph = Graph(Edge.([
-        (1, 3), (1, 4), (1, 5), (1, 15),
-        (2, 3), (2, 4),
-        (5, 9), (5, 16),
-        (6, 9), (6, 16),
-        (7, 8), (7, 9), (7, 15),
-        (10, 11), (10, 13), (10, 14), (10, 17),
-        (12, 13), (12, 14), (12, 16), (12, 17),
-        (15, 17) ]))
+    graph = SymmetricGraph(17)
+
+    add_edges!(graph,
+        [1, 1, 1, 1,  2, 2, 5, 5,  6, 6,  7, 7, 7,  10, 10, 10, 10, 12, 12, 12, 12, 15],
+        [3, 4, 5, 15, 3, 4, 9, 16, 9, 16, 8, 9, 15, 11, 13, 14, 17, 13, 14, 16, 17, 17])
 
     order = JunctionTrees.Order(graph, CuthillMcKeeJL_RCM())
     @test order == [2, 14, 13, 11, 4, 3, 12, 10, 16, 1, 17, 5, 6, 15, 9, 7, 8]
@@ -288,3 +288,59 @@ using Test
     @test getwidth(jtree) == 4
 end
 
+
+@testset "TensorNetworks" begin
+    include("./tensornetworks.jl")
+
+    # out[v,z] = A[v,w] * B[w,x] * C[x,y] * D[y,z]    
+    diagram = @relation (v, z) begin
+        A(v, w)
+        B(w, x)
+        C(x, y)
+        D(y, z)
+    end
+
+    nuwd = NestedUWD(diagram)
+    A, B, C, D = map(randn, [(3, 4), (4, 5), (5, 6), (6, 7)])
+    generators = Dict{Symbol, Array{Float64}}(:A => A, :B => B, :C => C, :D => D)
+    out = evalschedule(contract_tensor_network, nuwd, generators)
+    @test out ≈ A * B * C * D
+
+    # out[] = A[w,x] * B[x,y] * C[y,z] * D[z,w]
+    diagram = @relation () begin
+        A(w, x)
+        B(x, y)
+        C(y, z)
+        D(z, w)
+    end
+
+    nuwd = NestedUWD(diagram)
+    A, B, C, D = map(randn, [(10, 5), (5, 5), (5, 5), (5, 10)])
+    generators = Dict{Symbol, Array{Float64}}(:A => A, :B => B, :C => C, :D => D)
+    out = evalschedule(contract_tensor_network, nuwd, generators)
+    @test out[] ≈ tr(A * B * C * D)
+
+    # out[w,x,y,z] = A[w,x] * B[y,z]
+    diagram = @relation (w, x, y, z) begin
+        A(w, x)
+        B(y, z)
+    end
+
+    nuwd = NestedUWD(diagram)
+    A, B = map(randn, [(3, 4), (5, 6)])
+    generators = Dict{Symbol, Array{Float64}}(:A => A, :B => B)
+    out = evalschedule(contract_tensor_network, nuwd, generators)
+    @test out ≈ (reshape(A, (3, 4, 1, 1)) .* reshape(B, (1, 1, 5, 6)))
+
+    # out[] = A[x,y] * B[x,y]
+    diagram = @relation () begin
+        A(x, y)
+        B(x, y)
+    end
+
+    nuwd = NestedUWD(diagram)
+    A, B = map(randn, [(5, 5), (5, 5)])
+    generators = Dict{Symbol, Array{Float64}}(:A => A, :B => B)
+    out = evalschedule(contract_tensor_network, nuwd, generators)
+    @test out[] ≈ dot(vec(A), vec(B))
+end

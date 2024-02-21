@@ -6,10 +6,9 @@ import CuthillMcKee
 import Metis
 
 using AbstractTrees
-using Colors
+using Catlab.BasicGraphs
 using DataStructures
-using GraphPlot
-using Graphs
+using SparseArrays
 
 # Elimination Algorithms
 export EliminationAlgorithm, AMDJL_AMD, CuthillMcKeeJL_RCM, MetisJL_ND, MCS
@@ -79,7 +78,6 @@ include("./orders.jl")
 include("./trees.jl")
 include("./elimination_trees.jl")
 include("./junction_trees.jl")
-include("./hypergraphs.jl")
 
 
 end

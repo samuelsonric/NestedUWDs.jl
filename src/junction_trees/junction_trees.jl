@@ -1,111 +1,82 @@
 # A junction tree.
 struct JunctionTree
-    order::Order
-    tree::Tree
+    stree::EliminationTree
     seperatorlist::Vector{Vector{Int}}
-    residuallist::Vector{Vector{Int}}
-    subtreelist::Vector{Int}
-    width::Int 
 end
 
 
 # Construct a tree decomposition.
-function JunctionTree(graph::AbstractGraph, stree::EliminationTree)
+function JunctionTree(graph::AbstractSymmetricGraph, stree::EliminationTree)
     graph = makeeliminationgraph(graph, stree) 
 
-    m = nv(graph)
     n = length(stree)
     seperatorlist = Vector{Vector{Int}}(undef, n) 
-    residuallist = Vector{Vector{Int}}(undef, n)   
- 
     seperatorlist[n] = []
-    residuallist[n] = stree.firstsupernodelist[n]:m
 
     for i in 1:n - 1
         v₁ = stree.firstsupernodelist[i]
         v₂ = stree.lastsupernodelist[i]
-        v₃ = stree.firstancestorlist[i]
-        bag = neighbors(graph, v₁)
-
-        residuallist[i] = v₁:v₂
-        seperatorlist[i] = bag[searchsortedfirst(bag, v₃):end]
+        bag = collect(neighbors(graph, v₁))
+        sort!(bag)
+        seperatorlist[i] = bag[v₂ - v₁ + 1:end]
     end
 
-    order = stree.order
-    tree = stree.tree
-    subtreelist = stree.subtreelist
-    width = stree.width
-
-    JunctionTree(order, tree, seperatorlist, residuallist, subtreelist, width)
+    JunctionTree(stree, seperatorlist)
 end
 
 
-# Reorient a juncton tree toward a given root.
-function JunctionTree(jtree::JunctionTree, root::Integer)
-    i = root
-    j = parentindex(jtree, i)
-    parentlist = copy(jtree.tree.parentlist)
-    childrenlist = deepcopy(jtree.tree.childrenlist)
-
-    while !isnothing(j)
-        parentlist[j] = i
-        push!(childrenlist[i], j)
-        deletesorted!(childrenlist[j], i)
-        i = j
-        j = parentindex(jtree, i)
-    end
-
-    tree = Tree(root, parentlist, childrenlist)
-    postorder, tree = makepostorder(tree)
-    m = length(jtree.subtreelist)
+# Reorient a juncton tree towards the given root.
+function JunctionTree(root::Integer, jtree::JunctionTree)
+    m = length(jtree.stree.order)
     n = length(jtree)
     seperatorlist = Vector{Vector{Int}}(undef, n)
-    residuallist = Vector{Vector{Int}}(undef, n)
+    supernodelist = Vector{Vector{Int}}(undef, n)
     subtreelist = Vector{Int}(undef, m)
 
+    v₁ = jtree.stree.firstsupernodelist[root]
+    v₂ = jtree.stree.lastsupernodelist[root]
     seperatorlist[n] = []
-    residuallist[n] = [jtree.residuallist[postorder[n]]; jtree.seperatorlist[postorder[n]]]
-    subtreelist[residuallist[n]] .= n    
+    supernodelist[n] = [v₁:v₂; jtree.seperatorlist[root]]
+    subtreelist[supernodelist[n]] .= n 
+
+    tree = Tree(root, jtree.stree.tree)
+    postorder, tree = makepostorder(tree)
 
     for i in 1:n - 1
         j = postorder[i]
+        v₁ = jtree.stree.firstsupernodelist[j]
+        v₂ = jtree.stree.lastsupernodelist[j]
 
         if isdescendant(jtree, root, j)
-            i′ = parentindex(tree, i)
-            j′ = postorder[i′]
-            seperatorlist[i] = jtree.seperatorlist[j′]
-            residuallist[i] = [jtree.residuallist[j]; jtree.seperatorlist[j]]
-            deletesorted!(residuallist[i], seperatorlist[i])
+            seperatorlist[i] = jtree.seperatorlist[postorder[parentindex(tree, i)]]
+            supernodelist[i] = [v₁:v₂; jtree.seperatorlist[j]] 
+            deletesorted!(supernodelist[i], seperatorlist[i])
         else
             seperatorlist[i] = jtree.seperatorlist[j]
-            residuallist[i] = jtree.residuallist[j]
+            supernodelist[i] = v₁:v₂
         end
 
-        subtreelist[residuallist[i]] .= i
+        subtreelist[supernodelist[i]] .= i
     end 
 
-    order = jtree.order
-    width = jtree.width
-    JunctionTree(order, tree, seperatorlist, residuallist, subtreelist, width)
-end
+    order = jtree.stree.order
+    width = jtree.stree.width
+    stree = EliminationTree(order, tree, supernodelist, subtreelist, width)
 
+    for i in 1:n
+        seperatorlist[i] = stree.order.index[order[seperatorlist[i]]]
+        sort!(seperatorlist[i])
+    end
 
-# Construct a tree decomposition, first computing a supernodal elimination tree.
-function JunctionTree(
-    graph::AbstractGraph,
-    order::Order,
-    supernode::Supernode=DEFAULT_SUPERNODE)
-
-    stree = EliminationTree(graph, order, supernode)
-    JunctionTree(graph, stree)
+    JunctionTree(stree, seperatorlist)
 end
 
 
 # Construct a tree decomposition, first computing an elimination order and a supernodal
 # elimination tree.
 function JunctionTree(
-    graph::AbstractGraph,
-    algorithm::EliminationAlgorithm=DEFAULT_ELIMINATION_ALGORITHM,
+    graph::AbstractSymmetricGraph,
+    algorithm::Union{Order, EliminationAlgorithm}=DEFAULT_ELIMINATION_ALGORITHM,
     supernode::Supernode=DEFAULT_SUPERNODE)
 
     stree = EliminationTree(graph, algorithm, supernode)
@@ -113,97 +84,52 @@ function JunctionTree(
 end
 
 
-# Draw a junction tree.
-function GraphPlot.gplot(
-    jtree::JunctionTree;
-    edgelabel::Bool=false,
-    nodelabel::Bool=false,
-    nodefillc=RGB(0.1,0.1,0.1),
-    rootfillc=RGB(0.882911,0.359638,0.360092),
-    kwargs...)
-
-    el = edgelabel
-    nl = nodelabel
-    nc = parse(RGB{Float64}, nodefillc)
-    rc = parse(RGB{Float64}, rootfillc)
-
-    n = length(jtree)
-    graph = Graph(n)
-    edgelabel = Vector{Vector{Int}}(undef, n - 1)
-    nodelabel = Vector{Vector{Int}}(undef, n)
-    nodefillc = Vector{RGB{Float64}}(undef, n)
-
-    nodelabel[n] = getresidual(jtree, n)
-    nodefillc[n] = rc 
-
-    for i in n - 1:-1:1
-        add_edge!(graph, i, parentindex(jtree, i))
-        edgelabel[i] = getseperator(jtree, i)
-        nodelabel[i] = getresidual(jtree, i)
-        nodefillc[i] = nc
-    end
-
-    nodelabel = nl ? nodelabel : nothing
-    edgelabel = el ? edgelabel : []
-    nodelabelc = "white"
-
-    gplot(graph; edgelabel, nodelabel, nodefillc, nodelabelc, kwargs...)
-end
-
-
+# Get the number of nodes in a junction tree.
 function Base.length(jtree::JunctionTree)
-    length(jtree.tree)
+    length(jtree.stree)
 end
 
 
+# Get the width of a junction tree.
 function getwidth(jtree::JunctionTree)
-    jtree.width
+    getwidth(jtree.stree)
 end
 
 
 # Get the seperator at node i.
 function getseperator(jtree::JunctionTree, i::Integer)
-    jtree.order[jtree.seperatorlist[i]]
+    jtree.stree.order[jtree.seperatorlist[i]]
 end
 
 
 # Get the residual at node i.
 function getresidual(jtree::JunctionTree, i::Integer)
-    jtree.order[jtree.residuallist[i]]
+    getsupernode(jtree.stree, i)
 end
 
 
 # Get the highest node containing the vertex v.
-function getsubtree(jtree::JunctionTree, v::Integer)
-    jtree.subtreelist[jtree.order.index[v]]
-end
-
-# Get the highest node containing the vertices vs.
-function getsubtree(jtree::JunctionTree, vs::AbstractVector)
-    nodes = map(vs) do v
-        getsubtree(jtree, v)
-    end
-
-    minimum(nodes)
+function getsubtree(jtree::JunctionTree, v::Union{Integer, AbstractVector})
+    getsubtree(jtree.stree, v)
 end
 
 
 # Get the level of node i.
 function getlevel(jtree::JunctionTree, i::Integer)
-    getlevel(jtree.tree, i)
+    getlevel(jtree.stree, i)
 end
 
 
 # Evaluate whether node i₁ is a descendant of node i₂.
 function AbstractTrees.isdescendant(jtree::JunctionTree, i₁::Integer, i₂::Integer)
-    isdescendant(jtree.tree, i₁, i₂)
+    isdescendant(jtree.stree, i₁, i₂)
 end
 
 
 # Construct an elimination graph.
-function makeeliminationgraph(graph::AbstractGraph, stree::EliminationTree)
+function makeeliminationgraph(graph::AbstractSymmetricGraph, stree::EliminationTree)
     n = length(stree)
-    graph = DiGraph(graph, stree.order)
+    graph = Graph(graph, stree.order)
 
     for i in 1:n - 1
         u₁ = stree.firstsupernodelist[i]
@@ -213,7 +139,7 @@ function makeeliminationgraph(graph::AbstractGraph, stree::EliminationTree)
             v = u + 1
 
             for w in neighbors(graph, u)
-                if v != w
+                if v != w && !has_edge(graph, v, w)
                     add_edge!(graph, v, w)
                 end
             end
@@ -223,7 +149,7 @@ function makeeliminationgraph(graph::AbstractGraph, stree::EliminationTree)
         v = stree.firstsupernodelist[parentindex(stree, i)]
 
         for w in neighbors(graph, u)
-            if v != w
+            if v != w && !has_edge(graph, v, w)
                 add_edge!(graph, v, w)
             end
         end
@@ -239,17 +165,17 @@ end
 
 
 function AbstractTrees.rootindex(jtree::JunctionTree)
-    rootindex(jtree.tree)
+    rootindex(jtree.stree)
 end
 
 
 function AbstractTrees.parentindex(jtree::JunctionTree, i::Integer)
-    parentindex(jtree.tree, i)
+    parentindex(jtree.stree, i)
 end
 
 
 function AbstractTrees.childindices(jtree::JunctionTree, i::Integer)
-    childindices(jtree.tree, i)
+    childindices(jtree.stree, i)
 end
 
 

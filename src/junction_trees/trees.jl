@@ -8,11 +8,30 @@ struct Tree
 end
 
 
+# Orient a tree towards the given root.
+function Tree(root::Integer, tree::Tree)
+    i = root
+    parent = parentindex(tree, i)
+    parentlist = copy(tree.parentlist)
+    childrenlist = deepcopy(tree.childrenlist)
+
+    while !isnothing(parent)
+        parentlist[parent] = i 
+        push!(childrenlist[i], parent)
+        deletesorted!(childrenlist[parent], i)
+        i = parent
+        parent = parentindex(tree, i)
+    end
+
+    Tree(root, parentlist, childrenlist) 
+end
+
+
+# Construct a tree from a list of parent and a list of children.
 function Tree(root::Integer, parentlist::AbstractVector, childrenlist::AbstractVector)
     n = length(parentlist)
     levellist = Vector{Int}(undef, n)
     firstdescendantlist = Vector{Int}(undef, n)
-
     Tree(root, parentlist, childrenlist, levellist, firstdescendantlist)    
 end
 
@@ -34,11 +53,10 @@ end
 
 
 # Construct an elimination tree.
-function Tree(graph::AbstractGraph, order::Order)
+function Tree(graph::AbstractSymmetricGraph, order::Order)
     n = nv(graph)
     parentlist = makeetree(graph, order)
     @assert count(parentlist .== 0) == 1
-
     Tree(n, parentlist)
 end
 
@@ -57,8 +75,8 @@ end
 #
 # doi:10.1145/6497.6499
 # Algorithm 4.2: Elimination Tree by Path Compression
-function makeetree(graph::AbstractGraph, order::Order)
-    graph = DiGraph(graph, order)
+function makeetree(graph::AbstractSymmetricGraph, order::Order)
+    graph = Graph(graph, order)
 
     n = nv(graph)
     parent = Vector{Int}(undef, n)
@@ -95,14 +113,20 @@ end
 # The complexity is
 # 𝒪(m)
 # where m = |E|.
-function Graphs.DiGraph(graph::AbstractGraph, order::Order)
+function BasicGraphs.Graph(graph::AbstractSymmetricGraph, order::Order)
     n = nv(graph)
-    digraph = DiGraph(n)
-    
-    for e in edges(graph)
-        i₁ = order.index[src(e)]
-        i₂ = order.index[dst(e)]
-        add_edge!(digraph, min(i₁, i₂), max(i₁, i₂))
+    digraph = Graph(n)
+
+    for v in vertices(graph)
+        i = order.index[v]
+
+        for w in neighbors(graph, v)
+            j = order.index[w]
+
+            if i < j
+                add_edge!(digraph, i, j)
+            end
+        end
     end
 
     digraph
