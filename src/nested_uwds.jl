@@ -79,28 +79,37 @@ function makegraph(diagram::UndirectedWiringDiagram)
     n = nparts(diagram, :Junction)
     m = nparts(diagram, :Box)
     graph = SymmetricGraph(n)
-    b2j = Vector{Vector{Int}}(undef, m + 1)
-    b2j .= [[]]
 
-    for p in parts(diagram, :Port)
-        b = diagram[p, :box]
-        j = diagram[p, :junction]
+    for i in 1:m
+        junctions = diagram[incident(diagram, i, :box), :junction]
+        l = length(junctions)
+        
+        for i₁ in 1:l - 1
+            j₁ = junctions[i₁]
 
-        for j₀ in b2j[b]
-            add_edge!(graph, j₀, j)
+            for i₂ in i₁ + 1:l
+                j₂ = junctions[i₂]
+
+                if !has_edge(graph, j₁, j₂)
+                    add_edge!(graph, j₁, j₂)
+                end
+            end
         end
-
-        insertsorted!(b2j[b], j)
     end
 
-    for p in parts(diagram, :OuterPort)
-        j = diagram[p, :outer_junction]
+    junctions = diagram[:, :outer_junction]
+    l = length(junctions)
+    
+    for i₁ in 1:l - 1
+        j₁ = junctions[i₁]
 
-        for j₀ in b2j[m + 1]
-            add_edge!(graph, j₀, j)
+        for i₂ in i₁ + 1:l
+            j₂ = junctions[i₂]
+
+            if !has_edge(graph, j₁, j₂)
+                add_edge!(graph, j₁, j₂)
+            end
         end
-
-        insertsorted!(b2j[m + 1], j)
     end
 
     graph
